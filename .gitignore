@@ -1,0 +1,16 @@
+node_modules
+dist
+
+# Secrets and environment: never commit
+.env
+.env.*
+!.env.example
+*serviceAccount*.json
+*firebase-adminsdk*.json
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.log
