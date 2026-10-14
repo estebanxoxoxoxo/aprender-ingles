@@ -20,4 +20,6 @@ export interface Subtype extends Option {
 export interface GroupConfig extends Option {
   /** Vacío cuando el grupo entra directo al listado de ejercicios. */
   subtypes: Subtype[]
+  /** Las palabras del grupo. Solo en los grupos sin subtipos; si no, viven en cada subtipo. */
+  words?: string[]
 }

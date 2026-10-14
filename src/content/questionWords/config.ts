@@ -50,6 +50,6 @@ export const whatPhrases = [
 
 export const words = [...simple, ...howPhrases, ...whatPhrases]
 
-const group: GroupConfig = { key, value, subtypes }
+const group: GroupConfig = { key, value, subtypes, words }
 
 export default group

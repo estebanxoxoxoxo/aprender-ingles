@@ -25,15 +25,31 @@ VITE_APP_ID=...
 ## Navegación
 
 ```
-/                          Base | Memoria
-/memory                    (todavía vacío)
-/base                      Pronombres | Adverbios | Preposiciones | Artículos | Question words
-/base/articles             listado de ejercicios (directo)
-/base/question-words       listado de ejercicios (directo)
-/base/pronouns             subtipos -> /base/pronouns/personal-pronouns -> ejercicios
-/base/adverbs              subtipos -> /base/adverbs/manner-adverbs -> ejercicios
-/base/prepositions         subtipos -> /base/prepositions/place-prepositions -> ejercicios
+/                                       Base | Memoria
+/memory                                 (todavía vacío)
+/base                                   Pronombres | Adverbios | Preposiciones | Artículos | Question words
+/base/articles                          unidades (la sección no tiene subtipos)
+/base/articles/1                        ejercicios de la unidad 1
+/base/prepositions                      subtipos
+/base/prepositions/place-prepositions   unidades
+/base/prepositions/place-prepositions/1 ejercicios de la unidad 1
 ```
+
+## Unidades
+
+Al entrar a un subtipo (o a una sección sin subtipos) se arman **5 unidades** en el
+momento. Cada unidad son **3 pasadas sobre todas las palabras**: en cada pasada se
+sortea uno de los ejercicios de cada palabra. Entonces una unidad tiene
+`3 x cantidad de palabras` ejercicios, y el orden es pasada por pasada, siguiendo el
+orden del config.
+
+Cada palabra reparte de un mazo barajado, así que los `5 x 3 = 15` ejercicios que le
+tocan salen todos distintos de los 20 que tiene generados. Si una palabra tiene menos
+ejercicios que los necesarios, el mazo se recicla. El sorteo se rehace cada vez que se
+entra a una unidad.
+
+La lógica vive en `src/services/units.ts` (`buildUnits`, `UNIT_COUNT`,
+`PASSES_PER_UNIT`), separada de la lectura de Firestore.
 
 ## Tipos
 
@@ -68,24 +84,36 @@ ejercicios. Para agregar un grupo nuevo: crear su carpeta con `config.ts`, sumar
 
 ## Ejercicios en Firestore
 
-Los ejercicios se leen de la colección que lleva el `key` del grupo o subtipo
-(`articles`, `question-words`, `personal-pronouns`, `manner-adverbs`, ...).
+Todos los ejercicios viven en una sola colección `exercises`, con **un documento por
+palabra**:
 
-Se aceptan dos formas de guardar los datos (ver `src/services/exercises.ts`):
+```
+exercises/prepositions__place-prepositions__at
+{
+  section: 'prepositions',
+  subtype: 'place-prepositions',   // null en las secciones sin subtipos
+  word: 'at',
+  exercises: [ 20 x Exercise ],
+  model: 'claude-sonnet-5',   // el que respondió de verdad, no el alias pedido
+  generatedAt: '2026-09-08T...'
+}
+```
 
-1. Cada documento de la colección es una unidad con un array de 20 ejercicios en el
-   campo `units`, `exercises` o `items`.
-2. Cada documento de la colección es un ejercicio suelto.
+El id del documento es `seccion__subtipo__palabra`, con la palabra pasada a slug
+(`in front of` -> `in-front-of`). El artículo cero (`-`) queda como `zero`.
+
+La app filtra por `subtype` cuando hay subtipo y por `section` cuando no, así que
+alcanza con un `where` y no hace falta índice compuesto.
 
 Cada ejercicio tiene la forma del tipo `Exercise` (`src/types/exercise.ts`):
 
 ```json
 {
-  "word": "an",
+  "word": "at",
   "exerciseNumber": 1,
-  "sentence": "I bought [x] apple this morning.",
-  "answer": "an",
-  "hint": "un/una"
+  "sentence": "She usually arrives [x] the office before 9 a.m.",
+  "answer": "at",
+  "hint": "a"
 }
 ```
 
@@ -94,5 +122,44 @@ Cada ejercicio tiene la forma del tipo `Exercise` (`src/types/exercise.ts`):
 - `[x]`: marca dónde va el input.
 - `hint`: la palabra en español, se usa como placeholder del input.
 
-Las reglas de Firestore tienen que permitir la lectura de esas colecciones; si no, la
-pantalla muestra `Missing or insufficient permissions`.
+Las reglas de Firestore tienen que permitir leer `exercises` (y escribir, mientras
+corre el generador); si no, la pantalla muestra `Missing or insufficient permissions`.
+
+## Generar ejercicios
+
+`scripts/generate-exercises.ts` genera los ejercicios con Claude Code headless
+(`claude -p`, usa la sesión del host) y los sube a Firestore.
+
+```bash
+# menú interactivo: elegís sección, subtipo y si escribe o no
+npm run gen
+
+# ver las secciones y subtipos disponibles
+npm run gen:list
+
+# directo por bandera (dry-run: genera, valida y muestra, sin tocar Firestore)
+npm run gen -- --type articles
+
+# una sola palabra, para probar
+npm run gen -- --type prepositions --subtype place-prepositions --word at --count 4 --verbose
+
+# escribir de verdad (pide confirmación; --yes la saltea)
+npm run gen -- --type articles --write
+```
+
+El `.env` de la raíz se carga solo, no hace falta `--env-file`.
+
+Itera las palabras de la sección: si no tiene subtipos usa el `words` del grupo, y si
+tiene recorre los `words` de cada subtipo. Una llamada a Claude por palabra.
+
+`--help` lista todas las opciones. Puntos importantes:
+
+- **Sin `--write` no escribe nada**, ni siquiera lee la base.
+- Con `--write` pide confirmación por consola salvo que pases `--yes`.
+- Saltea las palabras que ya tienen documento; `--overwrite` las regenera.
+- Escribe documento por documento, así que se puede cortar y retomar.
+- Valida cada ejercicio antes de guardarlo: un solo `[x]`, `answer` igual a la palabra,
+  `hint` no vacío y oraciones no repetidas. Lo que no pasa, se descarta y se reporta.
+
+Escala y costo medidos: 545 palabras en total (~10.900 ejercicios), a ~US$0,09 por
+llamada con `claude-sonnet-5`, o sea ~US$48 si se genera todo. Conviene ir sección por sección.

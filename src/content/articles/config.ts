@@ -11,6 +11,6 @@ export const subtypes: Subtype[] = []
 // '-' representa el artículo cero (ausencia de artículo).
 export const words = ['a', 'an', 'the', 'some', '-']
 
-const group: GroupConfig = { key, value, subtypes }
+const group: GroupConfig = { key, value, subtypes, words }
 
 export default group

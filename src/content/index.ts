@@ -1,12 +1,12 @@
 // Registro de los grupos de "Base".
 // Cada grupo vive en su propia carpeta con su config.ts.
-import type { GroupConfig, Subtype } from '../types/content'
-import { groups } from './base/config'
-import pronouns from './pronouns/config'
-import adverbs from './adverbs/config'
-import prepositions from './prepositions/config'
-import articles from './articles/config'
-import questionWords from './questionWords/config'
+import type { GroupConfig, Subtype } from '../types/content.ts'
+import { groups } from './base/config.ts'
+import pronouns from './pronouns/config.ts'
+import adverbs from './adverbs/config.ts'
+import prepositions from './prepositions/config.ts'
+import articles from './articles/config.ts'
+import questionWords from './questionWords/config.ts'
 
 const configs: GroupConfig[] = [pronouns, adverbs, prepositions, articles, questionWords]
 

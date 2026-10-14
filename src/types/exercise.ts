@@ -28,3 +28,18 @@ export interface Exercise {
 export interface LoadedExercise extends Exercise {
   id: string
 }
+
+/** Los ejercicios de una palabra, tal como vienen de su documento de Firestore. */
+export interface WordExercises {
+  word: string
+  exercises: LoadedExercise[]
+}
+
+/**
+ * Una unidad armada en el momento: 3 pasadas por todas las palabras del subtipo,
+ * con un ejercicio sorteado por palabra en cada pasada.
+ */
+export interface Unit {
+  number: number
+  exercises: LoadedExercise[]
+}

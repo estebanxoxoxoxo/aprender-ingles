@@ -1,85 +1,43 @@
-import { useEffect, useState } from 'react'
-import { fetchExercises } from '../services/exercises'
+import { useState } from 'react'
 import type { LoadedExercise } from '../types/exercise'
 import ExerciseItem, { isCorrect } from './ExerciseItem'
 
-type Status = 'loading' | 'ready' | 'error'
-
-/** Lo que escribió el usuario, por id de ejercicio y por hueco `[x]`. */
-type Values = Record<string, string[]>
+/** Lo que escribió el usuario, por posición en la lista y por hueco `[x]`. */
+type Values = Record<number, string[]>
 
 interface ExerciseListProps {
-  /** Colección de Firestore de la que se leen los ejercicios. */
-  collectionKey: string
+  exercises: LoadedExercise[]
 }
 
-export default function ExerciseList({ collectionKey }: ExerciseListProps) {
-  const [exercises, setExercises] = useState<LoadedExercise[]>([])
-  const [status, setStatus] = useState<Status>('loading')
-  const [error, setError] = useState('')
+export default function ExerciseList({ exercises }: ExerciseListProps) {
   const [values, setValues] = useState<Values>({})
   const [checked, setChecked] = useState(false)
 
-  useEffect(() => {
-    let active = true
-    setStatus('loading')
-    setValues({})
-    setChecked(false)
-
-    fetchExercises(collectionKey)
-      .then((data) => {
-        if (!active) return
-        setExercises(data)
-        setStatus('ready')
-      })
-      .catch((err: unknown) => {
-        if (!active) return
-        setError(err instanceof Error ? err.message : String(err))
-        setStatus('error')
-      })
-
-    return () => {
-      active = false
-    }
-  }, [collectionKey])
-
-  function handleChange(exerciseId: string, blankIndex: number, value: string) {
+  function handleChange(position: number, blankIndex: number, value: string) {
     setValues((previous) => {
-      const next = [...(previous[exerciseId] ?? [])]
+      const next = [...(previous[position] ?? [])]
       next[blankIndex] = value
-      return { ...previous, [exerciseId]: next }
+      return { ...previous, [position]: next }
     })
   }
 
-  if (status === 'loading') {
-    return <p className="message">Cargando ejercicios…</p>
-  }
-
-  if (status === 'error') {
-    return <p className="message message-error">No se pudieron cargar los ejercicios: {error}</p>
-  }
-
-  if (exercises.length === 0) {
-    return (
-      <p className="message">
-        Todavía no hay ejercicios en la colección <code>{collectionKey}</code>.
-      </p>
-    )
-  }
-
-  const score = exercises.filter((exercise) => isCorrect(exercise, values[exercise.id] ?? [])).length
+  // La misma palabra aparece varias veces en una unidad, así que el estado va por
+  // posición y no por id de ejercicio.
+  const score = exercises.filter((exercise, position) =>
+    isCorrect(exercise, values[position] ?? []),
+  ).length
 
   return (
     <>
       <ol className="exercise-list">
-        {exercises.map((exercise, index) => (
+        {exercises.map((exercise, position) => (
           <ExerciseItem
-            key={exercise.id}
-            number={index + 1}
+            key={`${exercise.id}-${position}`}
+            number={position + 1}
             exercise={exercise}
-            values={values[exercise.id] ?? []}
+            values={values[position] ?? []}
             checked={checked}
-            onChange={(blankIndex, value) => handleChange(exercise.id, blankIndex, value)}
+            onChange={(blankIndex, value) => handleChange(position, blankIndex, value)}
           />
         ))}
       </ol>

@@ -1,16 +1,14 @@
-import { collection, getDocs } from 'firebase/firestore'
-import type { DocumentData } from 'firebase/firestore'
+import { collection, getDocs, query, where } from 'firebase/firestore'
+import type { DocumentData, QueryConstraint } from 'firebase/firestore'
 import { db } from '../firebase'
-import type { LoadedExercise } from '../types/exercise'
+import type { LoadedExercise, WordExercises } from '../types/exercise'
 
-// Los ejercicios se leen de la colección que lleva el `key` del grupo o del
-// subtipo (por ejemplo `articles`, `question-words`, `personal-pronouns`).
-//
-// Se aceptan dos formas de guardar los datos en Firestore:
-//   1. Cada documento de la colección es una unidad con un array de ejercicios
-//      en el campo `units`, `exercises` o `items` (20 ejercicios por unidad).
-//   2. Cada documento de la colección es un ejercicio suelto.
-const UNIT_FIELDS = ['units', 'exercises', 'items'] as const
+// Todos los ejercicios viven en una sola colección `exercises`, con un documento
+// por palabra. Cada documento tiene `section`, `subtype` (null si la sección no
+// tiene subtipos), `word` y un array `exercises` con los ejercicios de esa palabra.
+export const EXERCISES_COLLECTION = 'exercises'
+
+const UNIT_FIELDS = ['exercises', 'units', 'items'] as const
 const SENTENCE_FIELDS = ['sentence', 'text', 'phrase'] as const
 const NUMBER_FIELDS = ['exerciseNumber', 'order', 'number'] as const
 
@@ -31,11 +29,19 @@ function firstNumber(data: DocumentData, fields: readonly string[], fallback: nu
   return fallback
 }
 
-/** @param fallbackNumber Número a usar si el ejercicio no lo trae. */
-function normalize(raw: DocumentData, id: string, fallbackNumber: number): LoadedExercise {
+/**
+ * @param fallbackNumber Número a usar si el ejercicio no lo trae.
+ * @param fallbackWord Palabra del documento, para los ejercicios que no la repiten.
+ */
+function normalize(
+  raw: DocumentData,
+  id: string,
+  fallbackNumber: number,
+  fallbackWord: string,
+): LoadedExercise {
   return {
     id,
-    word: typeof raw.word === 'string' ? raw.word : '',
+    word: typeof raw.word === 'string' ? raw.word : fallbackWord,
     exerciseNumber: firstNumber(raw, NUMBER_FIELDS, fallbackNumber),
     sentence: firstField(raw, SENTENCE_FIELDS),
     answer: raw.answer ?? '',
@@ -43,25 +49,45 @@ function normalize(raw: DocumentData, id: string, fallbackNumber: number): Loade
   }
 }
 
-/** Devuelve los ejercicios de una colección, ya normalizados. */
-export async function fetchExercises(collectionKey: string): Promise<LoadedExercise[]> {
-  const snapshot = await getDocs(collection(db, collectionKey))
-  const exercises: LoadedExercise[] = []
+export interface ExercisesQuery {
+  /** Key de la sección: `articles`, `prepositions`... */
+  section: string
+  /** Key del subtipo: `place-prepositions`... Null en las secciones sin subtipos. */
+  subtype?: string | null
+}
+
+/**
+ * Trae los ejercicios de una sección o de un subtipo, agrupados por palabra.
+ * Una lectura por palabra; con eso alcanza para armar las 5 unidades en memoria.
+ */
+export async function fetchWordExercises({
+  section,
+  subtype,
+}: ExercisesQuery): Promise<WordExercises[]> {
+  const constraint: QueryConstraint = subtype
+    ? where('subtype', '==', subtype)
+    : where('section', '==', section)
+  const snapshot = await getDocs(query(collection(db, EXERCISES_COLLECTION), constraint))
+  const words: WordExercises[] = []
 
   snapshot.forEach((document) => {
     const data = document.data()
+    const word = typeof data.word === 'string' ? data.word : ''
     const unitField = UNIT_FIELDS.find((field) => Array.isArray(data[field]))
+    const exercises: LoadedExercise[] = []
 
     if (unitField) {
-      const unit = data[unitField] as DocumentData[]
-      unit.forEach((exercise, index) => {
-        exercises.push(normalize(exercise, `${document.id}-${index}`, index + 1))
+      const raw = data[unitField] as DocumentData[]
+      raw.forEach((exercise, index) => {
+        exercises.push(normalize(exercise, `${document.id}-${index}`, index + 1, word))
       })
-      return
+    } else {
+      exercises.push(normalize(data, document.id, 1, word))
     }
 
-    exercises.push(normalize(data, document.id, exercises.length + 1))
+    const valid = exercises.filter((exercise) => exercise.sentence)
+    if (valid.length > 0) words.push({ word, exercises: valid })
   })
 
-  return exercises.filter((exercise) => exercise.sentence)
+  return words
 }
